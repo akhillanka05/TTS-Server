@@ -28,6 +28,9 @@ This server is based on the architecture and UI of our [Dia-TTS-Server](https://
 
 ---
 
+[![Runpod](https://api.runpod.io/badge/akhillanka05/TTS-Server)](https://console.runpod.io/hub/akhillanka05/TTS-Server)
+
+
 ## 🗣️ Overview: Enhanced Chatterbox TTS Generation
 
 The [Chatterbox TTS model by Resemble AI](https://github.com/resemble-ai/chatterbox) provides capabilities for generating high-quality speech. This project builds upon that foundation by providing a robust [FastAPI](https://fastapi.tiangolo.com/) server that makes Chatterbox significantly easier to use and integrate.
