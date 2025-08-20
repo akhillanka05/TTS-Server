@@ -11,19 +11,21 @@ import tempfile
 import base64
 import traceback
 import json
+import torch
+import numpy as np
 from pathlib import Path
 
 # Add current directory to Python path to import your existing modules
 sys.path.insert(0, '/app')
 
-# Global engine instance (initialized once per worker)
-engine = None
+# Global engine initialization flag
+engine_initialized = False
 
 def initialize_engine():
     """Initialize your TTS engine using existing code"""
-    global engine
+    global engine_initialized
     
-    if engine is not None:
+    if engine_initialized:
         print("Engine already initialized")
         return True
         
@@ -31,22 +33,19 @@ def initialize_engine():
         print("🔄 Initializing TTS Engine...")
         
         # Import your existing TTS components
-        from engine import ChatterboxEngine
+        import engine
         from config import config_manager
         
-        # Use your existing config manager
-        config = config_manager.get_config()
         print(f"Config loaded successfully")
         
-        # Force CUDA for RunPod GPU instances
-        if 'tts_engine' in config:
-            config['tts_engine']['device'] = 'cuda'
-            print("Device set to CUDA for RunPod GPU")
-        
-        # Initialize using your existing ChatterboxEngine class
-        engine = ChatterboxEngine(config)
-        print("✅ TTS Engine initialized successfully!")
-        return True
+        # Load the model using your existing engine.py interface
+        if engine.load_model():
+            engine_initialized = True
+            print("✅ TTS Engine initialized successfully!")
+            return True
+        else:
+            print("❌ Failed to load TTS model")
+            return False
         
     except Exception as e:
         print(f"❌ Failed to initialize TTS engine: {str(e)}")
@@ -75,6 +74,11 @@ def process_tts_request(input_data):
         "output_format": "wav"
     }
     """
+    
+    # Import needed modules
+    import engine
+    import utils
+    from config import config_manager
     
     # Validate required fields
     text = input_data.get("text", "").strip()
@@ -153,79 +157,105 @@ def process_tts_request(input_data):
         else:
             return {"error": f"Invalid voice_mode: {voice_mode}. Use 'predefined' or 'clone'"}
         
-        # Generate speech using your existing engine
-        try:
-            print("🎵 Generating speech...")
+        # Process text chunks if needed
+        if split_text and len(text) > (chunk_size * 1.5):
+            print(f"Splitting text into chunks of size ~{chunk_size}.")
+            text_chunks = utils.chunk_text_by_sentences(text, chunk_size)
+        else:
+            text_chunks = [text]
+            print("Processing text as a single chunk.")
+        
+        if not text_chunks:
+            return {"error": "Text processing resulted in no usable chunks."}
+        
+        # Generate speech for each chunk using your existing engine
+        all_audio_segments = []
+        engine_sample_rate = None
+        
+        for i, chunk in enumerate(text_chunks):
+            print(f"🎵 Generating speech for chunk {i+1}/{len(text_chunks)}...")
             
-            # Call your existing engine's generate_speech method
-            # This should match the method signature in your engine.py
-            audio_result = engine.generate_speech(
-                text=text,
-                voice_audio_path=voice_audio_path,
-                temperature=temperature,
-                exaggeration=exaggeration,
-                cfg_weight=cfg_weight,
-                seed=seed,
-                speed_factor=speed_factor,
-                language=language,
-                split_text=split_text,
-                chunk_size=chunk_size,
-                output_format=output_format
-            )
-            
-            # Handle different return types from your engine
-            if isinstance(audio_result, (str, Path)):
-                # Engine returned a file path - read and clean up
-                audio_file_path = str(audio_result)
-                if os.path.exists(audio_file_path):
-                    with open(audio_file_path, 'rb') as f:
-                        audio_bytes = f.read()
-                    # Clean up the generated file
-                    try:
-                        os.unlink(audio_file_path)
-                    except:
-                        pass
-                else:
-                    raise FileNotFoundError(f"Generated audio file not found: {audio_file_path}")
-                    
-            elif isinstance(audio_result, bytes):
-                # Engine returned raw bytes
-                audio_bytes = audio_result
-            else:
-                raise TypeError(f"Unexpected return type from engine: {type(audio_result)}")
-            
-            # Encode as base64 for JSON response
-            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-            
-            print(f"✅ Speech generated successfully!")
-            print(f"   Audio size: {len(audio_bytes)} bytes")
-            
-            return {
-                "success": True,
-                "audio_base64": audio_base64,
-                "metadata": {
-                    "format": output_format,
-                    "text_length": len(text),
-                    "voice_mode": voice_mode,
-                    "audio_size_bytes": len(audio_bytes),
-                    "generation_params": {
-                        "temperature": temperature,
-                        "exaggeration": exaggeration,
-                        "cfg_weight": cfg_weight,
-                        "seed": seed,
-                        "speed_factor": speed_factor,
-                        "language": language,
-                        "split_text": split_text,
-                        "chunk_size": chunk_size
-                    }
+            try:
+                # Call your existing engine's synthesize function
+                audio_tensor, sample_rate = engine.synthesize(
+                    text=chunk,
+                    audio_prompt_path=voice_audio_path,
+                    temperature=temperature,
+                    exaggeration=exaggeration,
+                    cfg_weight=cfg_weight,
+                    seed=seed
+                )
+                
+                if audio_tensor is None or sample_rate is None:
+                    return {"error": f"TTS engine failed to synthesize audio for chunk {i+1}."}
+                
+                if engine_sample_rate is None:
+                    engine_sample_rate = sample_rate
+                
+                # Apply speed factor if needed
+                if speed_factor != 1.0:
+                    audio_tensor, _ = utils.apply_speed_factor(audio_tensor, sample_rate, speed_factor)
+                
+                # Convert tensor to numpy array
+                audio_np = audio_tensor.cpu().numpy().squeeze()
+                all_audio_segments.append(audio_np)
+                
+            except Exception as e:
+                return {"error": f"Error processing audio chunk {i+1}: {str(e)}"}
+        
+        # Concatenate all chunks
+        if len(all_audio_segments) > 1:
+            final_audio_np = np.concatenate(all_audio_segments)
+        else:
+            final_audio_np = all_audio_segments[0]
+        
+        print("🔊 Encoding final audio...")
+        
+        # Encode audio using your existing utils
+        encoded_audio_bytes = utils.encode_audio(
+            audio_array=final_audio_np,
+            sample_rate=engine_sample_rate,
+            output_format=output_format,
+            target_sample_rate=config_manager.get_int("audio_output.sample_rate", 24000)
+        )
+        
+        if encoded_audio_bytes is None or len(encoded_audio_bytes) < 100:
+            return {"error": f"Failed to encode audio to {output_format} or generated invalid audio."}
+        
+        # Encode as base64 for JSON response
+        audio_base64 = base64.b64encode(encoded_audio_bytes).decode('utf-8')
+        
+        print(f"✅ Speech generated successfully!")
+        print(f"   Audio size: {len(encoded_audio_bytes)} bytes")
+        
+        return {
+            "success": True,
+            "audio_base64": audio_base64,
+            "metadata": {
+                "format": output_format,
+                "text_length": len(text),
+                "voice_mode": voice_mode,
+                "audio_size_bytes": len(encoded_audio_bytes),
+                "chunks_processed": len(text_chunks),
+                "sample_rate": engine_sample_rate,
+                "generation_params": {
+                    "temperature": temperature,
+                    "exaggeration": exaggeration,
+                    "cfg_weight": cfg_weight,
+                    "seed": seed,
+                    "speed_factor": speed_factor,
+                    "language": language,
+                    "split_text": split_text,
+                    "chunk_size": chunk_size
                 }
             }
+        }
             
-        except Exception as e:
-            print(f"❌ TTS generation failed: {str(e)}")
-            print("Full traceback:")
-            print(traceback.format_exc())
-            return {"error": f"TTS generation failed: {str(e)}"}
+    except Exception as e:
+        print(f"❌ TTS generation failed: {str(e)}")
+        print("Full traceback:")
+        print(traceback.format_exc())
+        return {"error": f"TTS generation failed: {str(e)}"}
     
     finally:
         # Clean up temporary files
@@ -278,10 +308,12 @@ def get_system_status():
     """Get system status and health information"""
     try:
         import torch
+        import engine
         
         status = {
             "success": True,
-            "engine_initialized": engine is not None,
+            "engine_initialized": engine_initialized,
+            "model_loaded": engine.MODEL_LOADED if hasattr(engine, 'MODEL_LOADED') else False,
             "cuda_available": torch.cuda.is_available(),
             "python_version": sys.version,
             "working_directory": os.getcwd(),
