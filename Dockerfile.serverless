@@ -43,26 +43,23 @@ RUN mkdir -p voices reference_audio outputs logs hf_cache && \
 # Set proper permissions for the handler
 RUN chmod +x handler.py
 
-# Pre-download the Chatterbox model to reduce cold start time
-# This happens during build time, not runtime
-RUN python -c "
-import os
-os.environ['HF_HOME'] = '/app/hf_cache'
-try:
-    print('Pre-downloading Chatterbox model...')
-    from chatterbox import ChatterboxTTS
-    model = ChatterboxTTS.from_pretrained('ResembleAI/chatterbox')
-    print('Model pre-download successful!')
-    del model  # Free memory
-except Exception as e:
-    print(f'Model pre-download failed: {e}')
-    print('Model will be downloaded at runtime instead')
-" || echo "Pre-download failed, will download at runtime"
-
-# Set environment variables for Hugging Face cache
+# Set environment variables for Hugging Face cache BEFORE model download
 ENV HF_HOME=/app/hf_cache
 ENV HF_DATASETS_CACHE=/app/hf_cache
 ENV TRANSFORMERS_CACHE=/app/hf_cache
+
+# Create a simple Python script to download the model
+RUN echo 'import os\n\
+print("Pre-downloading Chatterbox model...")\n\
+try:\n\
+    from chatterbox import ChatterboxTTS\n\
+    model = ChatterboxTTS.from_pretrained("ResembleAI/chatterbox")\n\
+    print("Model pre-download successful!")\n\
+    del model\n\
+except Exception as e:\n\
+    print(f"Model pre-download failed: {e}")\n\
+    print("Model will be downloaded at runtime instead")' > /tmp/download_model.py && \
+    python /tmp/download_model.py || echo "Pre-download failed, will download at runtime"
 
 # Ensure the handler is the entry point for serverless
 CMD ["python", "handler.py"]
