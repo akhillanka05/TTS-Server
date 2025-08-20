@@ -28,14 +28,16 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 # Set working directory
 WORKDIR /app
 
-# Copy requirements file first (better Docker cache usage)
-COPY requirements-serverless.txt .
-
-# Upgrade pip
+# Upgrade pip first
 RUN pip3 install --no-cache-dir --upgrade pip
 
-# Install all Python dependencies including PyTorch from requirements file
-# This ensures compatible versions and avoids conflicts
+# Install PyTorch using your proven method
+RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Copy requirements file (without PyTorch)
+COPY requirements-serverless.txt .
+
+# Install remaining dependencies
 RUN pip3 install --no-cache-dir -r requirements-serverless.txt
 
 # Install s3tokenizer separately without deps (avoid conflicts)
@@ -52,7 +54,6 @@ RUN mkdir -p voices reference_audio outputs logs hf_cache && \
 RUN chmod +x handler.py
 
 # Model will be downloaded at runtime for faster worker startup
-# This prevents worker initialization timeouts
 RUN echo "Model will be downloaded at runtime for faster worker startup"
 
 # Entry point for RunPod serverless

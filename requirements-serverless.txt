@@ -1,18 +1,10 @@
 # RunPod Serverless SDK (REQUIRED for serverless deployment)
 runpod>=1.7.0
 
-# PyTorch with CUDA support for NVIDIA GPUs on RunPod
-# Using CUDA 12.1 (compatible with CUDA 12.8.1 runtime)
---extra-index-url https://download.pytorch.org/whl/cu121
-torch==2.6.0+cu121
-torchvision==0.19.0+cu121
-torchaudio==2.6.0+cu121
-
 # Core Chatterbox TTS (install from GitHub)
 git+https://github.com/resemble-ai/chatterbox.git
 
 # Core dependencies for TTS functionality
-# Matching your existing requirements for consistency
 librosa>=0.10.0
 safetensors>=0.4.0
 soundfile>=0.12.1
@@ -26,7 +18,6 @@ inflect>=6.0.0
 tqdm>=4.65.0
 
 # Chatterbox specific dependencies with pinned versions
-# Same as your existing setup
 conformer==0.3.2
 diffusers==0.29.0
 resemble-perth==1.0.1
@@ -44,5 +35,8 @@ python-multipart>=0.0.6
 # File handling
 aiofiles>=23.0.0
 
-# Additional dependencies that might be in your utils.py or engine.py
+# Additional dependencies
 watchdog>=3.0.0
+
+# NOTE: PyTorch (torch, torchvision, torchaudio) is installed separately 
+# in the Dockerfile using the proven CUDA 12.1 index-url method
