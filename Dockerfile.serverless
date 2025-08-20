@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Convenience: symlink python
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# Workdir
+# Set working directory
 WORKDIR /app
 
 # Copy requirements file first (better Docker cache usage)
@@ -34,10 +34,8 @@ COPY requirements-serverless.txt .
 # Upgrade pip
 RUN pip3 install --no-cache-dir --upgrade pip
 
-# Install PyTorch + CUDA 12.1 wheels
-RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
-# Install other Python dependencies
+# Install all Python dependencies including PyTorch from requirements file
+# This ensures compatible versions and avoids conflicts
 RUN pip3 install --no-cache-dir -r requirements-serverless.txt
 
 # Install s3tokenizer separately without deps (avoid conflicts)
@@ -46,16 +44,15 @@ RUN pip3 install --no-cache-dir --no-deps s3tokenizer
 # Copy application code
 COPY . .
 
-# Create runtime dirs with correct permissions
+# Create runtime directories with correct permissions
 RUN mkdir -p voices reference_audio outputs logs hf_cache && \
     chmod 755 voices reference_audio outputs logs hf_cache
 
 # Ensure handler is executable
 RUN chmod +x handler.py
 
-# DISABLED: Pre-download model (causing worker timeout)
-# Model will be downloaded on first request instead (1-2 minutes for first call)
-# This allows workers to start quickly (30-60 seconds)
+# Model will be downloaded at runtime for faster worker startup
+# This prevents worker initialization timeouts
 RUN echo "Model will be downloaded at runtime for faster worker startup"
 
 # Entry point for RunPod serverless
