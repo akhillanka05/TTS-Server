@@ -33,9 +33,6 @@ resemble-perth==1.0.1
 transformers==4.46.3
 onnx==1.16.0
 
-# S3 tokenizer (install without dependencies to avoid conflicts)
---no-deps s3tokenizer
-
 # Scientific computing
 numpy>=1.24.0
 scipy>=1.10.0

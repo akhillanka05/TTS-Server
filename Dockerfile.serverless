@@ -1,17 +1,17 @@
 # Dockerfile.serverless - Optimized for RunPod Serverless
-# Using the same base image as your working Dockerfile
+# Base image with CUDA runtime
 FROM nvidia/cuda:12.8.1-runtime-ubuntu22.04
 
-# Set environment variables (matching your existing Dockerfile)
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV DEBIAN_FRONTEND=noninteractive
-ENV CUDA_VISIBLE_DEVICES=0
+# Environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    CUDA_VISIBLE_DEVICES=0 \
+    HF_HOME=/app/hf_cache \
+    HF_DATASETS_CACHE=/app/hf_cache \
+    TRANSFORMERS_CACHE=/app/hf_cache
 
-# Set the Hugging Face home directory for better model caching
-ENV HF_HOME=/app/hf_cache
-
-# Install system dependencies (same as your existing Dockerfile)
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libsndfile1 \
@@ -23,34 +23,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a symlink for python to be python for convenience
+# Convenience: symlink python
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# Set up working directory
+# Workdir
 WORKDIR /app
 
-# Copy requirements first to leverage Docker cache
+# Copy requirements first (better Docker cache usage)
 COPY requirements-serverless.txt .
 
-# Upgrade pip and install Python dependencies
+# Upgrade pip and install all dependencies
 RUN pip3 install --no-cache-dir --upgrade pip && \
     pip3 install --no-cache-dir -r requirements-serverless.txt
 
-# Copy the application code
+# Install s3tokenizer separately without deps (avoid conflicts)
+RUN pip3 install --no-cache-dir --no-deps s3tokenizer
+
+# Copy application code
 COPY . .
 
-# Create necessary directories with proper permissions
+# Create runtime dirs with correct permissions
 RUN mkdir -p voices reference_audio outputs logs hf_cache && \
     chmod 755 voices reference_audio outputs logs hf_cache
 
-# Set proper permissions for the handler
+# Ensure handler is executable
 RUN chmod +x handler.py
 
-# Set environment variables for Hugging Face cache
-ENV HF_DATASETS_CACHE=/app/hf_cache
-ENV TRANSFORMERS_CACHE=/app/hf_cache
-
-# Pre-download the Chatterbox model to reduce cold start time
+# Pre-download the Chatterbox model to reduce cold start
 RUN echo 'import os\n\
 print("Pre-downloading Chatterbox model...")\n\
 try:\n\
@@ -63,5 +62,5 @@ except Exception as e:\n\
     print("Model will be downloaded at runtime instead")' > /tmp/download_model.py && \
     python /tmp/download_model.py || echo "Pre-download failed, will download at runtime"
 
-# Ensure the handler is the entry point for serverless
+# Entry point for RunPod serverless
 CMD ["python", "handler.py"]
