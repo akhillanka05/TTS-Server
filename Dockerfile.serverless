@@ -1,0 +1,68 @@
+# Dockerfile.serverless - Optimized for RunPod Serverless
+FROM nvidia/cuda:12.1-devel-ubuntu22.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    python3-dev \
+    git \
+    wget \
+    curl \
+    ffmpeg \
+    libsndfile1 \
+    libsndfile1-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create python symlink
+RUN ln -s /usr/bin/python3.10 /usr/bin/python
+
+# Set working directory
+WORKDIR /app
+
+# Copy serverless requirements first (for better Docker layer caching)
+COPY requirements-serverless.txt ./
+
+# Upgrade pip and install dependencies
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements-serverless.txt
+
+# Copy application code
+COPY . .
+
+# Create necessary directories with proper permissions
+RUN mkdir -p voices reference_audio outputs logs hf_cache && \
+    chmod 755 voices reference_audio outputs logs hf_cache
+
+# Set proper permissions for the handler
+RUN chmod +x handler.py
+
+# Pre-download the Chatterbox model to reduce cold start time
+# This happens during build time, not runtime
+RUN python -c "
+import os
+os.environ['HF_HOME'] = '/app/hf_cache'
+try:
+    print('Pre-downloading Chatterbox model...')
+    from chatterbox import ChatterboxTTS
+    model = ChatterboxTTS.from_pretrained('ResembleAI/chatterbox')
+    print('Model pre-download successful!')
+    del model  # Free memory
+except Exception as e:
+    print(f'Model pre-download failed: {e}')
+    print('Model will be downloaded at runtime instead')
+" || echo "Pre-download failed, will download at runtime"
+
+# Set environment variables for Hugging Face cache
+ENV HF_HOME=/app/hf_cache
+ENV HF_DATASETS_CACHE=/app/hf_cache
+ENV TRANSFORMERS_CACHE=/app/hf_cache
+
+# Ensure the handler is the entry point for serverless
+CMD ["python", "handler.py"]
