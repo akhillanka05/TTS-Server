@@ -1,6 +1,6 @@
 FROM runpod/pytorch:2.1.2-py3.10-cuda12.1-devel-ubuntu22.04
 
-# Set envs to reduce HF cache issues
+# Set envs
 ENV HF_HOME=/root/.cache/huggingface \
     TRANSFORMERS_CACHE=/root/.cache/huggingface \
     TORCH_CUDA_ARCH_LIST="8.0 8.6+PTX"
