@@ -37,7 +37,6 @@ RUN pip3 install --no-cache-dir --upgrade pip
 # Install PyTorch + CUDA 12.1 wheels
 RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-
 # Install other Python dependencies
 RUN pip3 install --no-cache-dir -r requirements-serverless.txt
 
@@ -54,18 +53,10 @@ RUN mkdir -p voices reference_audio outputs logs hf_cache && \
 # Ensure handler is executable
 RUN chmod +x handler.py
 
-# Pre-download the Chatterbox model to reduce cold start
-RUN echo 'import os\n\
-print("Pre-downloading Chatterbox model...")\n\
-try:\n\
-    from chatterbox import ChatterboxTTS\n\
-    model = ChatterboxTTS.from_pretrained("ResembleAI/chatterbox")\n\
-    print("Model pre-download successful!")\n\
-    del model\n\
-except Exception as e:\n\
-    print(f"Model pre-download failed: {e}")\n\
-    print("Model will be downloaded at runtime instead")' > /tmp/download_model.py && \
-    python /tmp/download_model.py || echo "Pre-download failed, will download at runtime"
+# DISABLED: Pre-download model (causing worker timeout)
+# Model will be downloaded on first request instead (1-2 minutes for first call)
+# This allows workers to start quickly (30-60 seconds)
+RUN echo "Model will be downloaded at runtime for faster worker startup"
 
 # Entry point for RunPod serverless
 CMD ["python", "handler.py"]
