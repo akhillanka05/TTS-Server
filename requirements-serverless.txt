@@ -1,25 +1,18 @@
-# requirements-serverless.txt - Minimal, no explicit transformers
-runpod>=1.7.0
+# Core ML stack (CUDA 12.1 compatible wheels)
+torch==2.1.2
+torchvision==0.16.2
+torchaudio==2.1.2
 
-# Copy exactly from your working requirements-nvidia.txt (minus torch)
-git+https://github.com/devnen/chatterbox.git
-fastapi
-uvicorn[standard]
-numpy>=1.26.0,<3.0.0
+# Hugging Face ecosystem
+transformers==4.39.3
+accelerate==0.29.2
+safetensors>=0.4.2
+
+# TTS engine
+chatterbox-tts==0.3.2   # or whatever latest stable release you require
+
+# Utilities
+numpy<2.0
+scipy
 soundfile
-librosa
-safetensors
-descript-audio-codec
-PyYAML
-python-multipart
-requests
-Jinja2
-watchdog
-aiofiles
-unidecode
-inflect
-tqdm
-hf_transfer
 pydub
-audiotsm
-praat-parselmouth

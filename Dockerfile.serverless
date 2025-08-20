@@ -1,44 +1,24 @@
-# Dockerfile.minimal - Follows your existing pattern exactly
-FROM nvidia/cuda:12.1-devel-ubuntu22.04
+FROM runpod/pytorch:2.1.2-py3.10-cuda12.1-devel-ubuntu22.04
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive \
-    CUDA_VISIBLE_DEVICES=0 \
-    HF_HOME=/app/hf_cache
-
-# System dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libsndfile1 \
-    ffmpeg \
-    python3.10 \
-    python3.10-pip \
-    python3.10-dev \
-    git \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
-    ln -sf /usr/bin/pip3 /usr/bin/pip
+# Set envs to reduce HF cache issues
+ENV HF_HOME=/root/.cache/huggingface \
+    TRANSFORMERS_CACHE=/root/.cache/huggingface \
+    TORCH_CUDA_ARCH_LIST="8.0 8.6+PTX"
 
 WORKDIR /app
 
-# Step 1: Use YOUR proven PyTorch installation method
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Install system deps
+RUN apt-get update && apt-get install -y \
+    git ffmpeg libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Step 2: Copy your existing requirements file 
-COPY requirements-nvidia.txt .
+# Copy requirements and install
+COPY requirements-serverless.txt .
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements-serverless.txt
 
-# Step 3: Install everything else (excluding torch lines since we already installed them)
-RUN pip install --no-cache-dir $(grep -v "^torch" requirements-nvidia.txt | grep -v "^#" | tr '\n' ' ')
-
-# Step 4: Add RunPod SDK
-RUN pip install --no-cache-dir runpod>=1.7.0
-
-# Copy app and create directories
+# Copy source code
 COPY . .
-RUN mkdir -p voices reference_audio outputs logs hf_cache
 
+# Entrypoint for RunPod
 CMD ["python", "handler.py"]
