@@ -1,5 +1,4 @@
 # Dockerfile.serverless - Optimized for RunPod Serverless
-# Base image with CUDA runtime
 FROM nvidia/cuda:12.8.1-runtime-ubuntu22.04
 
 # Environment variables
@@ -29,12 +28,18 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 # Workdir
 WORKDIR /app
 
-# Copy requirements first (better Docker cache usage)
+# Copy requirements file first (better Docker cache usage)
 COPY requirements-serverless.txt .
 
-# Upgrade pip and install all dependencies
-RUN pip3 install --no-cache-dir --upgrade pip && \
-    pip3 install --no-cache-dir -r requirements-serverless.txt
+# Upgrade pip
+RUN pip3 install --no-cache-dir --upgrade pip
+
+# Install PyTorch + CUDA 12.1 wheels
+RUN pip3 install --no-cache-dir torch==2.6.0+cu121 torchvision==0.19.0+cu121 torchaudio==2.6.0+cu121 \
+    --extra-index-url https://download.pytorch.org/whl/cu121
+
+# Install other Python dependencies
+RUN pip3 install --no-cache-dir -r requirements-serverless.txt
 
 # Install s3tokenizer separately without deps (avoid conflicts)
 RUN pip3 install --no-cache-dir --no-deps s3tokenizer
